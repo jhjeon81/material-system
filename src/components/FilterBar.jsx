@@ -1,4 +1,4 @@
-import MultiSelect from "./MultiSelect";
+import MultiSelect from "./Multiselect";
 
 export default function FilterBar({
   startDate, setStartDate,
