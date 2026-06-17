@@ -1,11 +1,18 @@
 import { useState, useMemo } from "react";
 import { ocrList, isWeightBased, getValidation } from "../data/ocrData";
+import { preRegisterList } from "../data/preRegisterData";
+import { useVehicleContext } from "../context/VehicleContext";
 import FilterBar from "../components/FilterBar";
 import { card, sectionTitle, th, td, today } from "../styles/common.jsx";
 
-const allMaterials = [...new Set(ocrList.map(d => d.material))];
-const allVendors   = [...new Set(ocrList.map(d => d.vendor))];
-const allStatuses  = ["정상", "검증필요", "오류"];
+// 지입 차량번호 Set (사전등록 기준)
+const jipipNos = new Set(
+  preRegisterList
+    .filter(r => r.type === "지입")
+    .map(r => r.vehicleNo.replace(/\s/g, ""))
+);
+
+const allStatuses = ["정상", "검증필요", "오류"];
 
 const statusConfig = {
   "정상":    { bg: "var(--success-bg)", color: "var(--success)", border: "var(--success)" },
@@ -26,6 +33,7 @@ function ConfBar({ value }) {
 }
 
 export default function OCR() {
+  const { unmatchedRows } = useVehicleContext();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate]     = useState(today);
   const [selectedMaterials, setSelectedMaterials] = useState([]);
@@ -36,6 +44,22 @@ export default function OCR() {
   const [appliedMaterials, setAppliedMaterials]   = useState([]);
   const [appliedVendors, setAppliedVendors]       = useState([]);
   const [appliedStatuses, setAppliedStatuses]     = useState([]);
+
+  // 사후관리에서 지입으로 확정된 차량번호 추가
+  const jipipFromPost = new Set(
+    unmatchedRows
+      .filter(r => r.classified && r.materialType === "지입")
+      .map(r => r.car.replace(/\s/g, ""))
+  );
+
+  // 지급자재만 필터링
+  const jipupOnlyList = ocrList.filter(o => {
+    const carNo = o.car.replace(/\s/g, "");
+    return !jipipNos.has(carNo) && !jipipFromPost.has(carNo);
+  });
+
+  const allMaterials = [...new Set(jipupOnlyList.map(d => d.material))];
+  const allVendors   = [...new Set(jipupOnlyList.map(d => d.vendor))];
 
   const handleSearch = () => {
     setAppliedStart(startDate); setAppliedEnd(endDate);
@@ -51,7 +75,7 @@ export default function OCR() {
     setAppliedMaterials([]); setAppliedVendors([]); setAppliedStatuses([]);
   };
 
-  const dataWithValidation = ocrList.map(o => ({ ...o, validation: getValidation(o) }));
+  const dataWithValidation = jipupOnlyList.map(o => ({ ...o, validation: getValidation(o) }));
 
   const filteredList = useMemo(() => dataWithValidation.filter(o => {
     if (o.date < appliedStart || o.date > appliedEnd) return false;
@@ -59,7 +83,7 @@ export default function OCR() {
     if (appliedVendors.length > 0   && !appliedVendors.includes(o.vendor))             return false;
     if (appliedStatuses.length > 0  && !appliedStatuses.includes(o.validation.status)) return false;
     return true;
-  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors, appliedStatuses]);
+  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors, appliedStatuses, dataWithValidation]);
 
   const counts = {
     전체:     filteredList.length,
@@ -74,12 +98,18 @@ export default function OCR() {
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
       <div style={{ borderBottom: "1px solid var(--line)", paddingBottom: "16px" }}>
-        <div style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--ink)", letterSpacing: "-0.03em" }}>OCR 검증</div>
+        <div style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--ink)", letterSpacing: "-0.03em" }}>송장데이터</div>
         <div style={{ fontSize: "var(--fs-sm)", color: "var(--ink-3)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
-          {periodLabel} 기준
+          {periodLabel} 기준 · 지급자재만 표시
           {appliedMaterials.length > 0 && ` · ${appliedMaterials.join(", ")}`}
           {appliedStatuses.length > 0  && ` · ${appliedStatuses.join(", ")}`}
         </div>
+      </div>
+
+      {/* 지입 제외 안내 */}
+      <div style={{ padding: "10px 14px", borderRadius: "var(--radius)", background: "var(--info-bg)", border: "1px solid var(--accent)", fontSize: "var(--fs-xs)", color: "var(--ink-2)" }}>
+        <span style={{ color: "var(--accent)", fontWeight: "var(--fw-semibold)", marginRight: "6px" }}>■ 지급자재 전용</span>
+        사전등록 또는 사후관리에서 <strong>지입</strong>으로 분류된 차량은 자동 제외됩니다 · 지입자재는 송장 관리 대상 아님
       </div>
 
       <FilterBar

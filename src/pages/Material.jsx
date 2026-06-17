@@ -1,17 +1,24 @@
 import { useState, useMemo } from "react";
 import { todayList, budgetData } from "../data/materialData";
+import { preRegisterList } from "../data/preRegisterData";
+import { useVehicleContext } from "../context/VehicleContext";
 import FilterBar from "../components/FilterBar";
 import { card, sectionTitle, th, td, today, pct, RateBar, OrderStatus } from "../styles/common.jsx";
 import VehicleModal from "../components/VehicleModal";
+
+// 지입 차량번호 Set (사전등록 기준)
+const jipipNos = new Set(
+  preRegisterList
+    .filter(r => r.type === "지입")
+    .map(r => r.vehicleNo.replace(/\s/g, ""))
+);
 
 const totalBudget = budgetData.reduce((s,c) => s + c.items.reduce((ss,i) => ss+i.budget, 0), 0);
 const totalOrder  = budgetData.reduce((s,c) => s + c.items.reduce((ss,i) => ss+i.order,  0), 0);
 const totalActual = budgetData.reduce((s,c) => s + c.items.reduce((ss,i) => ss+i.actual, 0), 0);
 
-const allMaterials = [...new Set(todayList.map(d => d.material))];
-const allVendors   = [...new Set(todayList.map(d => d.vendor))];
-
 export default function Material() {
+  const { unmatchedRows } = useVehicleContext();
   const [expanded, setExpanded]               = useState({});
   const [selectedCar, setSelectedCar]         = useState(null);
   const [startDate, setStartDate]             = useState(today);
@@ -22,6 +29,22 @@ export default function Material() {
   const [appliedEnd, setAppliedEnd]               = useState(today);
   const [appliedMaterials, setAppliedMaterials]   = useState([]);
   const [appliedVendors, setAppliedVendors]       = useState([]);
+
+  // 사후관리에서 지입으로 확정된 차량번호 추가
+  const jipipFromPost = new Set(
+    unmatchedRows
+      .filter(r => r.classified && r.materialType === "지입")
+      .map(r => r.car.replace(/\s/g, ""))
+  );
+
+  // 지급자재만 필터링 (사전등록 지입 + 사후관리 지입 제외)
+  const jipupOnlyList = todayList.filter(v => {
+    const carNo = v.car.replace(/\s/g, "");
+    return !jipipNos.has(carNo) && !jipipFromPost.has(carNo);
+  });
+
+  const allMaterials = [...new Set(jipupOnlyList.map(d => d.material))];
+  const allVendors   = [...new Set(jipupOnlyList.map(d => d.vendor))];
 
   const toggle = (cat) => setExpanded(p => ({ ...p, [cat]: !p[cat] }));
 
@@ -37,12 +60,12 @@ export default function Material() {
     setAppliedMaterials([]); setAppliedVendors([]);
   };
 
-  const filteredList = useMemo(() => todayList.filter(v => {
+  const filteredList = useMemo(() => jipupOnlyList.filter(v => {
     if (v.date < appliedStart || v.date > appliedEnd) return false;
     if (appliedMaterials.length > 0 && !appliedMaterials.includes(v.material)) return false;
     if (appliedVendors.length > 0   && !appliedVendors.includes(v.vendor))     return false;
     return true;
-  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors]);
+  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors, jipupOnlyList]);
 
   const periodLabel = appliedStart === appliedEnd ? appliedStart : `${appliedStart} ~ ${appliedEnd}`;
 
@@ -52,10 +75,16 @@ export default function Material() {
       <div style={{ borderBottom: "1px solid var(--line)", paddingBottom: "16px" }}>
         <div style={{ fontSize: "var(--fs-2xl)", fontWeight: "var(--fw-bold)", color: "var(--ink)", letterSpacing: "-0.03em" }}>자재 세부현황</div>
         <div style={{ fontSize: "var(--fs-sm)", color: "var(--ink-3)", marginTop: "4px", fontFamily: "var(--font-mono)" }}>
-          {periodLabel} 기준
+          {periodLabel} 기준 · 지급자재만 표시
           {appliedMaterials.length > 0 && ` · ${appliedMaterials.join(", ")}`}
           {appliedVendors.length > 0   && ` · ${appliedVendors.join(", ")}`}
         </div>
+      </div>
+
+      {/* 지입 제외 안내 */}
+      <div style={{ padding: "10px 14px", borderRadius: "var(--radius)", background: "var(--info-bg)", border: "1px solid var(--accent)", fontSize: "var(--fs-xs)", color: "var(--ink-2)" }}>
+        <span style={{ color: "var(--accent)", fontWeight: "var(--fw-semibold)", marginRight: "6px" }}>■ 지급자재 전용</span>
+        사전등록 또는 사후관리에서 <strong>지입</strong>으로 분류된 차량은 자동 제외됩니다 · 지입자재는 VMS 출입만 관리
       </div>
 
       <FilterBar
@@ -71,10 +100,10 @@ export default function Material() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
         {[
-          { label: "조회 건수",        value: `${filteredList.length}`,                                    unit: "건", color: "var(--accent)" },
-          { label: "자재 종류",        value: `${[...new Set(filteredList.map(d => d.material))].length}`, unit: "종", color: "var(--success)" },
-          { label: "예산 대비 발주율", value: `${pct(totalOrder,totalBudget).toFixed(1)}`,                 unit: "%",  color: "var(--info)" },
-          { label: "예산 대비 투입율", value: `${pct(totalActual,totalBudget).toFixed(1)}`,                unit: "%",  color: "var(--success)" },
+          { label: "조회 건수",        value: `${filteredList.length}`,                                       unit: "건", color: "var(--accent)" },
+          { label: "자재 종류",        value: `${[...new Set(filteredList.map(d => d.material))].length}`,    unit: "종", color: "var(--success)" },
+          { label: "예산 대비 발주율", value: `${pct(totalOrder,totalBudget).toFixed(1)}`,                    unit: "%",  color: "var(--info)" },
+          { label: "예산 대비 투입율", value: `${pct(totalActual,totalBudget).toFixed(1)}`,                   unit: "%",  color: "var(--success)" },
         ].map(c => (
           <div key={c.label} style={card}>
             <div style={{ fontSize: "var(--fs-xs)", color: "var(--ink-3)", marginBottom: "10px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", textTransform: "uppercase" }}>{c.label}</div>

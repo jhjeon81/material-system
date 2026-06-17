@@ -3,21 +3,27 @@ import Dashboard from "./pages/Dashboard";
 import Material from "./pages/Material";
 import Vehicle from "./pages/Vehicle";
 import OCR from "./pages/OCR";
+import PreRegister from "./pages/PreRegister";
+import PostRegister from "./pages/PostRegister";
+import Closing from "./pages/Closing";
 
 const navItems = [
-  { to: "/",         label: "Overview",      desc: "종합 현황" },
-  { to: "/material", label: "자재 세부현황",  desc: "입고 · 예산 · 투입" },
-  { to: "/vehicle",  label: "차량입출 PROCESS",    desc: "VMS / 계근" },
-  { to: "/ocr",      label: "송장데이터",      desc: "AI 송장인식" },
+  { to: "/",            label: "Overview",        desc: "종합 현황" },
+  { to: "/vehicle",     label: "차량입출 PROCESS", desc: "VMS / 계근" },
+  { to: "/material",    label: "자재 세부현황",    desc: "입고 · 예산 · 투입" },
+  { to: "/ocr",         label: "송장데이터",        desc: "AI 송장인식" },
+  { to: "/postregister",label: "미등록 사후관리",   desc: "차량 분류 · 송장등록" },
+  { to: "/closing",     label: "기성 관리",         desc: "업체별 투입 · 기성 확정" },
 ];
 
 const SITE = {
   code: "C1090C", name: "천안 아이파크시티 5단지",
-  type: "민수주택 · 건축", amount: "282억", period: "2026.02 ~ 2028.12",
+  type: "민수주택 · 건축", amount: "2.821억", period: "2026.04 ~ 2029.01",
 };
 
 function Sidebar() {
   const location = useLocation();
+  const isPreRegActive = location.pathname === "/preregister";
   return (
     <aside style={{
       width: "var(--sidebar-w)", minHeight: "100vh", flexShrink: 0,
@@ -78,10 +84,28 @@ function Sidebar() {
         })}
       </nav>
 
-      <div style={{ marginTop: "auto", padding: "12px 10px", borderRadius: "var(--radius)", border: "1px solid var(--line)", background: "var(--bg-elevated)" }}>
-        <div style={{ fontSize: "10px", color: "var(--ink-3)", marginBottom: "4px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em" }}>CURRENT USER</div>
-        <div style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-base)", color: "var(--ink)" }}>담당자</div>
-        <div style={{ fontSize: "var(--fs-xs)", color: "var(--ink-3)", marginTop: "2px" }}>DX팀 · 현장관제</div>
+      {/* 차량 사전등록 CTA */}
+      <div style={{ marginTop: "auto", borderTop: "1px solid var(--line)", paddingTop: "16px" }}>
+        <Link to="/preregister">
+          <div style={{
+            display: "flex", alignItems: "center", gap: "10px",
+            padding: "12px 14px", borderRadius: "var(--radius)",
+            background: isPreRegActive ? "#FFF3E0" : "var(--bg-elevated)",
+            border: isPreRegActive ? "2px solid #E65100" : "2px solid #E65100",
+            transition: "all var(--transition-fast)",
+          }}>
+            <div style={{
+              width: "32px", height: "32px", borderRadius: "var(--radius-sm)",
+              background: "#E65100", flexShrink: 0,
+              display: "grid", placeItems: "center",
+              fontSize: "18px", color: "#fff",
+            }}>＋</div>
+            <div>
+              <div style={{ fontSize: "var(--fs-base)", fontWeight: "var(--fw-semibold)", color: "#E65100", letterSpacing: "-0.01em" }}>차량 사전등록</div>
+              <div style={{ fontSize: "var(--fs-xs)", color: "var(--ink-3)", marginTop: "2px" }}>차단기 자동 개방 연동</div>
+            </div>
+          </div>
+        </Link>
       </div>
     </aside>
   );
@@ -94,10 +118,13 @@ export default function App() {
         <Sidebar />
         <main style={{ flex: 1, padding: "32px", overflowY: "auto", background: "var(--bg)" }}>
           <Routes>
-            <Route path="/"         element={<Dashboard />} />
-            <Route path="/material" element={<Material />} />
-            <Route path="/vehicle"  element={<Vehicle />} />
-            <Route path="/ocr"      element={<OCR />} />
+            <Route path="/"             element={<Dashboard />} />
+            <Route path="/material"     element={<Material />} />
+            <Route path="/vehicle"      element={<Vehicle />} />
+            <Route path="/ocr"          element={<OCR />} />
+            <Route path="/preregister"  element={<PreRegister />} />
+            <Route path="/postregister" element={<PostRegister />} />
+            <Route path="/closing"      element={<Closing />} />
           </Routes>
         </main>
       </div>

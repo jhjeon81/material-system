@@ -1,17 +1,27 @@
 import { useState, useMemo } from "react";
 import { vehicleList, getStatus } from "../data/vehicleData";
+import { preRegisterList } from "../data/preRegisterData";
 import FilterBar from "../components/FilterBar";
 import { card, sectionTitle, th, td, today } from "../styles/common.jsx";
 
-const allMaterials = [...new Set(vehicleList.map(d => d.material))];
-const allVendors   = [...new Set(vehicleList.map(d => d.vendor))];
-const allStatuses  = ["출차완료", "하역중", "이상징후", "입차중"];
+// 지입 차량번호 Set
+const jipipNos = new Set(
+  preRegisterList
+    .filter(r => r.type === "지입")
+    .map(r => r.vehicleNo.replace(/\s/g, ""))
+);
+const isJipip = (car) => jipipNos.has((car || "").replace(/\s/g, ""));
+
+const allStatuses = ["입고완료", "진행중", "이상징후", "입차중", "지입"];
 
 const statusConfig = {
+  "입고완료": { bg: "var(--success-bg)", color: "var(--success)",  border: "var(--success)" },
   "출차완료": { bg: "var(--success-bg)", color: "var(--success)",  border: "var(--success)" },
+  "진행중":   { bg: "var(--warning-bg)", color: "var(--warning)",  border: "var(--warning)" },
   "하역중":   { bg: "var(--warning-bg)", color: "var(--warning)",  border: "var(--warning)" },
   "입차중":   { bg: "var(--info-bg)",    color: "var(--accent)",   border: "var(--accent)" },
   "이상징후": { bg: "var(--danger-bg)",  color: "var(--danger)",   border: "var(--danger)" },
+  "지입":     { bg: "#FAEEDA",           color: "#854F0B",          border: "#EFD4A8" },
 };
 
 const blinkStyle = `
@@ -21,18 +31,32 @@ const blinkStyle = `
   }
 `;
 
-function TimeFlow({ v }) {
-  const status = getStatus(v);
-  const isAnomaly = status === "이상징후";
+function TimeFlow({ v, isJipipVehicle }) {
+  // 지입 차량은 VMS 입/출차만 표시
+  if (isJipipVehicle) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+        <div style={{ textAlign: "center", minWidth: "40px" }}>
+          <div style={{ width: "10px", height: "10px", borderRadius: "50%", margin: "0 auto 2px", background: v.time_vms_in ? "var(--success)" : "var(--line-strong)" }} />
+          <div style={{ fontSize: "9px", color: "var(--ink-3)" }}>VMS입차</div>
+          {v.time_vms_in && <div style={{ fontSize: "9px", color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{v.time_vms_in}</div>}
+        </div>
+        <div style={{ width: "14px", height: "1px", marginBottom: "12px", background: "var(--line)" }} />
+        <div style={{ textAlign: "center", minWidth: "40px" }}>
+          <div style={{ width: "10px", height: "10px", borderRadius: "50%", margin: "0 auto 2px", background: v.time_vms_out ? "var(--success)" : "#c1cad4" }} />
+          <div style={{ fontSize: "9px", color: "var(--ink-3)" }}>VMS출차</div>
+          {v.time_vms_out && <div style={{ fontSize: "9px", color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>{v.time_vms_out}</div>}
+        </div>
+      </div>
+    );
+  }
 
   const getDotStyle = (stepKey) => {
     const hasVmsIn  = !!v.time_vms_in;
     const hasScale1 = !!v.time_scale1;
     const hasScale2 = !!v.time_scale2;
     const hasVmsOut = !!v.time_vms_out;
-
-    const now      = new Date();
-    const todayStr = now.toISOString().slice(0,10);
+    const todayStr  = new Date().toISOString().slice(0,10);
     const isPastDay = v.date < todayStr;
 
     let color = "var(--line-strong)";
@@ -41,12 +65,10 @@ function TimeFlow({ v }) {
     if (stepKey === "vms_in") {
       if (hasVmsIn) color = "var(--success)";
       else if (hasScale1 || hasScale2) { color = "var(--danger)"; blink = true; }
-      else color = "var(--line-strong)";
     }
     else if (stepKey === "scale1") {
       if (hasScale1) color = "var(--success)";
       else if (hasVmsIn && !hasScale1) { color = "var(--danger)"; blink = true; }
-      else color = "var(--line-strong)";
     }
     else if (stepKey === "scale2") {
       if (hasScale2) color = "var(--success)";
@@ -54,7 +76,6 @@ function TimeFlow({ v }) {
         if (hasVmsOut || isPastDay) { color = "var(--danger)"; blink = true; }
         else color = "#f5c518";
       }
-      else color = "var(--line-strong)";
     }
     else if (stepKey === "vms_out") {
       color = hasVmsOut ? "var(--success)" : "#c1cad4";
@@ -134,21 +155,41 @@ export default function Vehicle() {
     setAppliedMaterials([]); setAppliedVendors([]); setAppliedStatuses([]);
   };
 
-  const dataWithStatus = vehicleList.map(v => ({ ...v, status: getStatus(v) }));
+  // 지입 여부 반영한 데이터
+  const dataWithStatus = vehicleList.map(v => {
+    const jipip = isJipip(v.car);
+    const status = jipip ? "지입" : getStatus(v);
+    // 지입 차량 찾아서 외주사명 가져오기
+    const preRegItem = preRegisterList.find(r =>
+      r.type === "지입" && r.vehicleNo.replace(/\s/g, "") === v.car.replace(/\s/g, "")
+    );
+    return {
+      ...v,
+      status,
+      isJipip: jipip,
+      displayVendor:   jipip ? (preRegItem?.receiver || v.vendor) : v.vendor,
+      displayMaterial: jipip ? "-" : v.material,
+      displaySpec:     jipip ? "-" : v.spec,
+    };
+  });
+
+  const allVendors   = [...new Set(dataWithStatus.map(d => d.displayVendor))];
+  const allMaterials = [...new Set(dataWithStatus.filter(d => !d.isJipip).map(d => d.material))];
 
   const filteredList = useMemo(() => dataWithStatus.filter(v => {
     if (v.date < appliedStart || v.date > appliedEnd) return false;
     if (appliedMaterials.length > 0 && !appliedMaterials.includes(v.material)) return false;
-    if (appliedVendors.length > 0   && !appliedVendors.includes(v.vendor))     return false;
+    if (appliedVendors.length > 0   && !appliedVendors.includes(v.displayVendor)) return false;
     if (appliedStatuses.length > 0  && !appliedStatuses.includes(v.status))    return false;
     return true;
-  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors, appliedStatuses]);
+  }), [appliedStart, appliedEnd, appliedMaterials, appliedVendors, appliedStatuses, dataWithStatus]);
 
   const counts = {
     전체:     filteredList.length,
-    출차완료: filteredList.filter(v => v.status === "출차완료").length,
-    하역중:   filteredList.filter(v => v.status === "하역중").length,
+    입고완료: filteredList.filter(v => v.status === "입고완료").length,
+    진행중:   filteredList.filter(v => v.status === "진행중").length,
     이상징후: filteredList.filter(v => v.status === "이상징후").length,
+    지입:     filteredList.filter(v => v.status === "지입").length,
   };
 
   const periodLabel = appliedStart === appliedEnd ? appliedStart : `${appliedStart} ~ ${appliedEnd}`;
@@ -177,12 +218,13 @@ export default function Vehicle() {
         onReset={handleReset}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: "12px" }}>
         {[
           { label: "조회 입차",  value: counts.전체,     unit: "대", color: "var(--accent)" },
-          { label: "출차 완료",  value: counts.출차완료,  unit: "대", color: "var(--success)" },
-          { label: "하역중",     value: counts.하역중,    unit: "대", color: "var(--warning)" },
+          { label: "입고 완료",  value: counts.입고완료,  unit: "대", color: "var(--success)" },
+          { label: "진행중",     value: counts.진행중,    unit: "대", color: "var(--warning)" },
           { label: "이상징후",   value: counts.이상징후,  unit: "건", color: "var(--danger)" },
+          { label: "지입",       value: counts.지입,      unit: "대", color: "#854F0B" },
         ].map(c => (
           <div key={c.label} style={card}>
             <div style={{ fontSize: "var(--fs-xs)", color: "var(--ink-3)", marginBottom: "10px", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", textTransform: "uppercase" }}>{c.label}</div>
@@ -195,9 +237,9 @@ export default function Vehicle() {
       </div>
 
       <div style={{ ...card, padding: "14px 20px", background: "var(--danger-bg)", border: "1px solid var(--danger)" }}>
-        <div style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-semibold)", color: "var(--danger)", marginBottom: "4px", fontFamily: "var(--font-mono)" }}>■ 이상징후 판단 기준</div>
+        <div style={{ fontSize: "var(--fs-xs)", fontWeight: "var(--fw-semibold)", color: "var(--danger)", marginBottom: "4px", fontFamily: "var(--font-mono)" }}>■ 이상징후 판단 기준 (지급자재 한정)</div>
         <div style={{ fontSize: "var(--fs-xs)", color: "var(--ink-2)", lineHeight: 1.8 }}>
-          VMS입차 없음 · 1차계근 없음 · 2차계근 없는데 VMS출차 있음 · 전일 2차계근 미완료
+          VMS입차 없음 · 1차계근 없음 · 2차계근 없는데 VMS출차 있음 · 전일 2차계근 미완료 · 지입자재는 이상징후 집계 제외
         </div>
       </div>
 
@@ -214,25 +256,25 @@ export default function Vehicle() {
             </thead>
             <tbody>
               {filteredList.map((v, i) => {
-                const sc = statusConfig[v.status];
+                const sc = statusConfig[v.status] || { bg: "var(--bg-soft)", color: "var(--ink-3)", border: "var(--line)" };
                 return (
-                  <tr key={i} style={{ background: v.status === "이상징후" ? "var(--danger-bg)" : "" }}>
+                  <tr key={i} style={{ background: v.status === "이상징후" ? "var(--danger-bg)" : v.isJipip ? "#FFFBF5" : "" }}>
                     <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.date}</td>
                     <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", fontWeight: "var(--fw-semibold)", color: "var(--ink)" })}>
                       {v.status === "이상징후" && <span style={{ color: "var(--danger)", marginRight: "4px", animation: "blink 1s ease-in-out infinite" }}>⚠</span>}
                       {v.car}
                     </td>
-                    <td style={td({ fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.driver}</td>
-                    <td style={td({ fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.vendor}</td>
-                    <td style={td({ fontWeight: "var(--fw-medium)", color: "var(--ink)" })}>{v.material}</td>
-                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)" })}>{v.spec}</td>
-                    <td style={td({ fontFamily: "var(--font-mono)", color: "var(--accent)", fontWeight: "var(--fw-semibold)" })}>{v.qty} {v.unit}</td>
-                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)" })}>{v.weight_in}t</td>
-                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.weight_out ? `${v.weight_out}t` : "-"}</td>
+                    <td style={td({ fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.isJipip ? "-" : v.driver}</td>
+                    <td style={td({ fontSize: "var(--fs-xs)", color: v.isJipip ? "#854F0B" : "var(--ink-3)" })}>{v.displayVendor}</td>
+                    <td style={td({ fontWeight: "var(--fw-medium)", color: v.isJipip ? "var(--ink-3)" : "var(--ink)" })}>{v.displayMaterial}</td>
+                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)" })}>{v.displaySpec}</td>
+                    <td style={td({ fontFamily: "var(--font-mono)", color: "var(--accent)", fontWeight: "var(--fw-semibold)" })}>{v.isJipip ? "-" : `${v.qty} ${v.unit}`}</td>
+                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)" })}>{v.isJipip ? "-" : v.weight_in ? `${v.weight_in}t` : "-"}</td>
+                    <td style={td({ fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", color: "var(--ink-3)" })}>{v.isJipip ? "-" : v.weight_out ? `${v.weight_out}t` : "-"}</td>
                     <td style={td({ fontFamily: "var(--font-mono)", fontWeight: "var(--fw-semibold)", color: v.weight_net ? "var(--success)" : "var(--ink-3)" })}>
-                      {v.weight_net ? `${v.weight_net}t` : "-"}
+                      {v.isJipip ? "-" : v.weight_net ? `${v.weight_net}t` : "-"}
                     </td>
-                    <td style={td()}><TimeFlow v={v} /></td>
+                    <td style={td()}><TimeFlow v={v} isJipipVehicle={v.isJipip} /></td>
                     <td style={td()}>
                       <span style={{
                         fontSize: "var(--fs-xs)", padding: "3px 8px",
@@ -247,7 +289,7 @@ export default function Vehicle() {
           </table>
         )}
         <div style={{ marginTop: "14px", fontSize: "var(--fs-xs)", color: "var(--ink-3)", fontFamily: "var(--font-mono)" }}>
-          ※ 실중량 = 입차중량 - 공차중량 · 2차계근 완료 시 출차 인정 · VMS출차는 선택사항
+          ※ 실중량 = 입차중량 - 공차중량 · 2차계근 완료 시 출차 인정 · VMS출차는 선택사항 · 지입자재는 VMS 출입만 확인
         </div>
       </div>
     </div>
